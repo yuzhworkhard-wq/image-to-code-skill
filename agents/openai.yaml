@@ -1,0 +1,4 @@
+interface:
+  display_name: "Image to Code"
+  short_description: "750px image-to-code with HD PNG slicing"
+  default_prompt: "Use $image-to-code to convert the selected UI image into responsive code and export precise high-resolution transparent PNG assets."
