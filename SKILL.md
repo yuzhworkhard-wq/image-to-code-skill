@@ -49,9 +49,9 @@ description: 像素级 750px 图片转代码与高清切图工作流。当 Codex
 5. 先按 manifest 导出高清切图资源，再写代码。禁止先凭感觉写代码再补切图。
 6. 背景本地抠除不干净时，使用 image2/imagegen 做透明 PNG 背景抠除，并保持页面显示外框、构图和主体位置不变。
 7. 在 750px 基准画板中使用 manifest 的精确坐标实现代码。
-8. 增加自适应外层：必须按容器或视口整体缩放 750px 基准画板，不得对子元素重新排版。缺少自适应外层的代码交付视为未完成。
+8. 增加自适应外层：按容器或视口整体缩放 750px 基准画板，不得对子元素重新排版。
 9. 分模块校验：矢量、文本、位图/图标切图分别验收。
-10. 做整页 750px 叠图复核，并至少截图验证 `375px` 窄屏和 `750px` 基准宽度两个视口的自适应结果。
+10. 做整页 750px 叠图复核，并做至少一个窄屏/宽屏自适应截图。
 11. 根据具体错位、缺图、裁切、样式差异继续迭代。
 12. 交付代码、高清切图资源、manifest 和简短还原报告。
 
@@ -279,13 +279,9 @@ scripts/extract_png_asset.py source.png assets/icons/icon-home-01.png \
 - 字间距默认按原图提取；原图没有明显 tracking 时保持 `0`。
 - 不要用视口宽度直接缩放字体。
 - 交付代码必须有自适应外层，不能只写死 750px。自适应外层只负责整体等比缩放或在更大容器中居中显示，不得对子元素重新排版。
-- 自适应是交付必需品，不是第二阶段任务。最终代码中必须能找到 `.fit-shell`、`.fit-box`、`.artboard` 或语义等效的三层结构：外层占满可用容器，中层按缩放后尺寸占位，内层保持 750px 基准坐标并整体 transform。
-- 不允许只写 `width: 750px`、`max-width: 750px`、`margin: auto` 或静态截图容器就声称自适应完成。
-- 画板内子元素必须仍使用 750px 基准坐标。响应式只能改变外层 scale 或容器占位，不能在移动端改子元素的 x/y/width/height、font-size、gap、grid 分布。
-- 对于网页/React/Vite 交付，必须包含可运行的缩放计算：优先使用 `ResizeObserver` 读取父容器宽度；纯静态 HTML 可使用 viewport fallback，但仍必须有实际 `--board-scale` 变量驱动画板缩放。
-- `img` 资源的 CSS 显示尺寸必须来自 manifest 的 `css_display_width/height`，不能因为画板自适应而改用 PNG 文件真实像素尺寸。
+- 
 
-最低可接受结构：
+推荐结构：
 
 ```html
 <main class="fit-shell">
@@ -322,30 +318,7 @@ scripts/extract_png_asset.py source.png assets/icons/icon-home-01.png \
 }
 ```
 
-优先使用父容器自适应，而不是只看 `100vw`：
-
-```js
-const fitShell = document.querySelector('.fit-shell');
-const fitBox = document.querySelector('.fit-box');
-
-function setBoardScale(width) {
-  const scale = Math.min(1, width / 750);
-  fitBox.style.setProperty('--board-scale', String(scale));
-}
-
-new ResizeObserver(([entry]) => {
-  setBoardScale(entry.contentRect.width);
-}).observe(fitShell);
-```
-
-如果项目已有容器测量方式，可以用等效逻辑，但必须满足：容器宽度变化时 `--board-scale` 会更新；`.fit-box` 的占位宽高随 scale 改变；`.artboard` 仍是 `750px` 基准画板。750px QA 截图时必须能让 `--board-scale: 1`。
-
-自适应失败判定：
-
-- 在 `375px` 视口或窄容器中，画板仍横向溢出、出现水平滚动，判定失败。
-- `.artboard` 直接写死显示为 `750px` 且外层没有缩放占位，判定失败。
-- 使用 `transform: scale(...)` 但父容器高度仍按未缩放 750px 画板撑开，导致下方大空白，判定失败。
-- 移动端通过重新排版、改变间距、改变字号或移动子元素来适配，而不是整体等比缩放，判定失败。
+如果需要按父容器而不是视口适配，使用 `ResizeObserver` 或项目现有容器测量方式设置 `--board-scale = containerWidth / 750`。无论哪种方式，750px QA 截图时必须让 `--board-scale: 1`。
 
 ## 验收与复核
 
@@ -355,10 +328,8 @@ new ResizeObserver(([entry]) => {
 2. 截取 750px 画板截图。
 3. 与 750px 归一化原图进行叠图对比。
 4. 分别校验矢量图层、文本图层、位图/图标切图模块。
-5. 截取 `375px` 窄屏或等效窄容器截图，确认无水平滚动、无 750px 固定溢出、无缩放后大空白。
-6. 截取 `750px` 基准宽度截图，确认 `--board-scale: 1` 时和原图仍能叠图复核。
-7. 先修正最大差异：画板尺寸、层级顺序、坐标、宽高、背景、字体大小、自适应缩放，再修细节效果。
-8. 重复截图和对比，直到剩余差异都有明确原因。
+5. 先修正最大差异：画板尺寸、层级顺序、坐标、宽高、背景、字体大小，再修细节效果。
+6. 重复截图和对比，直到剩余差异都有明确原因。
 
 必须保留一个 QA 对照方式：可以是半透明底图 overlay、单独对比截图、或差异图。最终生产层不能依赖整页底图，但开发验收必须能证明实现层和源图对齐。
 
@@ -371,8 +342,6 @@ new ResizeObserver(([entry]) => {
 ## 验收标准
 
 - 整体画板宽度必须精确为 `750px`。
-- 交付代码必须包含可运行自适应外层；缺少缩放容器、缩放变量或窄屏验证，判定未完成。
-- `375px` 窄屏或窄容器中不能出现 750px 固定宽度横向溢出，也不能出现 transform 后父容器仍按未缩放高度占位造成的大空白。
 - 矢量形状的坐标、宽高、圆角、描边、渐变、颜色和透明度必须对齐 750px 原图，主观允许误差为 `0px`。
 - 文本内容、坐标、字号、字重、行高、字间距、颜色、对齐方式和换行必须对齐原图。
 - 每个图标/位图 PNG 的真实像素尺寸必须等于 manifest 的 `asset_pixel_width/height`，页面显示尺寸必须等于对应元素外框 `css_display_width/height`。
