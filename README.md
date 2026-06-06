@@ -1,39 +1,73 @@
 # Image to Code
 
-`image-to-code` 是一个用于 Codex 的图片转代码与切图 skill，目标是把选中的 UI 图片或设计截图按 750px 画板宽度进行像素级还原，并导出独立透明 PNG 切图资源。
+`image-to-code` is a Codex skill for turning a selected UI image, screenshot, or exported design into code with pixel-level discipline. It normalizes the source to a fixed `750px` design canvas, exports independent high-density transparent PNG assets, and uses a manifest-driven workflow so every layer can be audited.
 
-调用名：
+`image-to-code` 是一个用于 Codex 的图片转代码与高清切图 skill。它会把用户选中的 UI 图片、截图或设计导出稿按 `750px` 画板宽度进行像素级还原，导出独立高清透明 PNG 资源，并通过 manifest 驱动整个实现与验收流程。
+
+## Contents
+
+- [中文说明](#中文说明)
+- [English Guide](#english-guide)
+- [Repository Structure](#repository-structure)
+- [License](#license)
+
+## 中文说明
+
+### 项目定位
+
+这个项目不是普通的前端模板，也不是自动重新设计工具。它是一套 Codex skill 工作流，用来约束 AI agent 在执行“图片转代码”任务时严格尊重原图：
+
+- 原图是唯一视觉合同。
+- 基准画板宽度固定为 `750px`。
+- 所有坐标、尺寸、圆角、描边、阴影和字体都使用同一个缩放比例。
+- 文本尽量保持为可编辑文本。
+- 图标、头像、插画、复杂装饰和产品图从当前源图中切出独立 PNG。
+- 简单矩形、按钮、分割线、卡片背景等用代码或原生矢量实现。
+- 先做 manifest 和切图，再写页面代码。
+- 交付前必须做 bbox 预览、PNG 透明度审计和截图差异对比。
+
+### 安装方式
+
+把整个目录放到 Codex 的 skills 目录中：
 
 ```text
-$image-to-code
+~/.codex/skills/image-to-code
 ```
 
-## 适用场景
+安装脚本依赖：
 
-- 将移动端 UI 截图还原为 HTML/CSS/JS 或项目内前端代码
-- 将设计图按 750px 宽度等比还原
-- 从源图中提取头像、图标、插画、装饰图、导航图标等透明 PNG 资源
-- 保留文本为可编辑文本层
-- 将简单矩形、圆角卡片、按钮、分割线等转为原生 CSS/矢量形状
-- 对切图位置、尺寸、透明背景和整页还原效果做验收
+```bash
+python3 -m pip install -r requirements.txt
+```
 
-## 核心原则
+当前脚本依赖：
 
-- 原图是唯一视觉源，不允许凭感觉重绘或重新设计
-- 画板宽度必须精确为 `750px`
-- 所有元素按同一比例缩放
-- 禁止自动排版、优化间距、重排布局
-- 禁止用相似图标库、相似插画、AI 生成图或占位素材替代原图资源
-- 切图必须来自当前源图对应区域
-- 切图必须是透明背景 PNG
-- 切图区域必须先通过 bbox 预览确认
-- 不允许自动 trim、智能裁边、内容自适应缩边
-- 交付前必须进行 bbox、PNG 透明度、贴边和整页叠图校验
+- Pillow
+- NumPy
 
-## 工作流
+### 如何触发
 
-1. 读取当前源图，记录原始尺寸。
-2. 计算缩放比例：
+在 Codex 中可以直接点名 skill：
+
+```text
+使用 $image-to-code 将当前选中的 UI 图片转换为代码，并导出透明 PNG 切图资源。
+```
+
+也可以用自然语言描述任务，例如：
+
+```text
+把这张 750px 移动端设计图还原成 HTML/CSS，并把图标和插画单独切成透明 PNG。
+```
+
+### 标准工作流程
+
+1. **检查输入图**
+
+   确认源图尺寸、宽高比、目标技术栈、是否需要切图、哪些文字要保留为可编辑文本，以及最终页面需要在哪些宽度下展示。
+
+2. **归一化到 750px 画板**
+
+   以源图宽度为基准计算缩放比例：
 
    ```text
    scale = 750 / source_width
@@ -41,33 +75,67 @@ $image-to-code
    final_height = round(source_height * scale)
    ```
 
-3. 创建 `layers.manifest.json`，记录每个图层的原图 bbox、缩放后 bbox、类型、z-index 和资源路径。
-4. 使用 bbox 预览脚本检查切图区域是否准确。
-5. 按 manifest 从源图导出透明 PNG 切图。
-6. 使用 manifest 坐标实现 750px 固定画板代码。
-7. 分别验收矢量层、文本层、位图/图标切图层。
-8. 截图并与 750px 原图叠图复核。
+   所有图层都必须使用同一个 `scale`，不能为了布局更顺眼单独调整元素。
 
-## 目录结构
+3. **建立 `layers.manifest.json`**
 
-```text
-image-to-code/
-├── SKILL.md
-├── README.md
-├── agents/
-│   └── openai.yaml
-├── references/
-│   └── slicing.md
-└── scripts/
-    ├── audit_png_assets.py
-    ├── compare_images.py
-    ├── extract_png_asset.py
-    └── preview_bboxes.py
-```
+   manifest 是布局和切图的唯一数据源。每个图层至少记录：
 
-## Manifest 示例
+   - `id`
+   - `type`
+   - `source_bbox`
+   - `scaled_bbox`
+   - `z_index`
+   - `asset`
+   - `asset_scale_factor`
+   - `css_display_width`
+   - `css_display_height`
+   - `transparent_required`
 
-`layers.manifest.json` 示例：
+4. **预览 bbox**
+
+   在源图上画出 manifest 中的 bbox，确认切图框没有裁掉主体，也没有误带相邻元素。
+
+   ```bash
+   scripts/preview_bboxes.py source.png layers.manifest.json qa/bbox-preview.png --only-type bitmap
+   ```
+
+5. **导出高清 PNG 资源**
+
+   使用精确 bbox 从源图导出 PNG。高清导出只提高 PNG 文件真实像素，不改变它在页面中的 CSS 显示尺寸。
+
+   ```bash
+   scripts/extract_png_asset.py source.png assets/icons/icon-user.png \
+     --x 120 --y 980 --width 72 --height 72 \
+     --scale-factor 3 \
+     --remove-bg floodfill \
+     --manifest layers.manifest.json \
+     --id icon-user
+   ```
+
+6. **实现 750px 固定画板**
+
+   页面根画板固定为 `width: 750px`。关键元素用 manifest 坐标定位。响应式只允许在外层整体缩放画板，不应该对子元素重新排版。
+
+7. **审计 PNG 资源**
+
+   检查 PNG 是否带 alpha 通道、背景是否透明、是否贴边，以及尺寸是否和 manifest 匹配。
+
+   ```bash
+   scripts/audit_png_assets.py assets/icons assets/images \
+     --require-transparent-bg \
+     --manifest layers.manifest.json
+   ```
+
+8. **截图对比验收**
+
+   将最终渲染截图与 750px 参考图做差异对比。
+
+   ```bash
+   scripts/compare_images.py reference-750.png render-750.png --json
+   ```
+
+### Manifest 示例
 
 ```json
 [
@@ -78,6 +146,11 @@ image-to-code/
     "scaled_bbox": { "x": 86, "y": 112, "width": 120, "height": 120 },
     "z_index": 10,
     "asset": "assets/images/avatar.png",
+    "asset_pixel_width": 360,
+    "asset_pixel_height": 360,
+    "asset_scale_factor": 3,
+    "css_display_width": 120,
+    "css_display_height": 120,
     "transparent_required": true
   },
   {
@@ -94,83 +167,197 @@ image-to-code/
 ]
 ```
 
-## 脚本说明
+### 交付物
 
-脚本依赖：
+一次完整的图片转代码任务通常应该交付：
 
-- Pillow，许可证为 HPND License
-- NumPy，许可证为 BSD-3-Clause License
+- 还原后的前端代码
+- 独立透明 PNG 切图资源
+- `layers.manifest.json`
+- bbox 预览图
+- 750px 基准截图
+- 至少一个移动端自适应截图
+- 简短还原报告，说明资源、误差、限制和验收结果
 
-安装依赖：
+### 验收标准
 
-```bash
-python3 -m pip install -r requirements.txt
-```
+- 750px 基准画板宽度精确为 `750px`。
+- 画板高度按源图比例计算，不人为优化。
+- 所有主要图层位置、大小、层级和样式可追溯到 manifest。
+- 文本为可编辑文本，除非它属于复杂位图的一部分。
+- 图标、头像、插画和复杂装饰来自当前源图切图。
+- PNG 资源透明、高清、不贴边、不带白底或灰底。
+- bbox 预览与源图元素边界一致。
+- 最终截图和参考图无明显错位、缺图、裁切或替代素材。
 
-### 1. 预览 bbox
+## English Guide
 
-在源图上画出 manifest 中记录的 bbox，用于检查切图区域是否准确。
+### What This Project Is
 
-```bash
-scripts/preview_bboxes.py source.png layers.manifest.json qa/bbox-preview.png --only-type bitmap
-```
+This repository packages a Codex skill for strict image-to-code reconstruction. It is designed for UI screenshots, mobile app screens, Figma exports, web mockups, posters, and similar design images where the source image is the visual contract.
 
-### 2. 按 bbox 导出 PNG
+The skill pushes Codex to follow a measured process instead of improvising a new layout:
 
-从源图按精确 bbox 导出 PNG。脚本不会自动 trim，输出画布固定等于 bbox。
+- Normalize the source image to a `750px`-wide design canvas.
+- Keep one global scale for every coordinate and visual property.
+- Build a `layers.manifest.json` before coding.
+- Export bitmap/icon layers from the current source image.
+- Keep text editable whenever possible.
+- Recreate simple shapes with code.
+- Audit exported assets and compare the final render against the reference.
 
-```bash
-scripts/extract_png_asset.py source.png assets/icons/icon-user.png \
-  --x 120 --y 980 --width 72 --height 72 \
-  --remove-bg floodfill \
-  --manifest layers.manifest.json \
-  --id icon-user
-```
+### Installation
 
-### 3. 审计 PNG 切图
-
-检查 PNG 是否贴边、尺寸是否匹配，以及透明背景是否合格。
-
-```bash
-scripts/audit_png_assets.py assets/icons assets/images \
-  --require-transparent-bg \
-  --manifest layers.manifest.json
-```
-
-### 4. 图片差异对比
-
-对比 750px 原图和最终渲染截图。
-
-```bash
-scripts/compare_images.py reference-750.png render-750.png --json
-```
-
-## 验收标准
-
-- 最终画板宽度为 `750px`
-- 页面布局和原图同位置、同尺寸、同层级
-- 文本为可编辑文本，不 rasterize 到整页图中
-- 简单图形用 CSS/原生矢量实现
-- 头像、图标、插画、装饰图等从当前源图提取
-- PNG 切图有 alpha 通道，背景透明
-- PNG 不贴边、不缺失、不带白色或灰色矩形背景
-- bbox 预览图中框选区域准确
-- 最终页面截图和 750px 原图叠图无明显偏移、缺图、裁切或替代素材
-
-## 安装
-
-将整个目录放到 Codex 的 skills 目录：
+Place the repository directory in your Codex skills folder:
 
 ```text
 ~/.codex/skills/image-to-code
 ```
 
-然后在 Codex 中使用：
+Install script dependencies:
 
-```text
-使用 $image-to-code 将当前选中的 UI 图片转换为代码，并导出透明 PNG 切图资源。
+```bash
+python3 -m pip install -r requirements.txt
 ```
 
-## 许可证
+Dependencies:
 
-本项目使用 MIT License 开源。详见 `LICENSE`。
+- Pillow
+- NumPy
+
+### How to Use It
+
+Trigger the skill explicitly in Codex:
+
+```text
+Use $image-to-code to convert the selected UI image into code and export transparent PNG assets.
+```
+
+You can also describe the task naturally:
+
+```text
+Convert this mobile UI screenshot into HTML/CSS at a 750px design width, and export the icons and illustrations as separate transparent PNG files.
+```
+
+### Step-by-Step Workflow
+
+1. **Inspect the source**
+
+   Record the original image dimensions, target output type, required editable text, bitmap layers, responsive constraints, and project framework.
+
+2. **Normalize to a 750px canvas**
+
+   Calculate the global scale:
+
+   ```text
+   scale = 750 / source_width
+   final_width = 750
+   final_height = round(source_height * scale)
+   ```
+
+   Apply this scale to every coordinate, size, border radius, stroke, shadow, gradient position, and text measurement.
+
+3. **Create `layers.manifest.json`**
+
+   The manifest is the source of truth for layout and slicing. Each layer should record its source bbox, scaled bbox, type, z-index, asset path, and transparency requirements.
+
+4. **Preview bounding boxes**
+
+   Draw bbox overlays on the original source image before exporting assets:
+
+   ```bash
+   scripts/preview_bboxes.py source.png layers.manifest.json qa/bbox-preview.png --only-type bitmap
+   ```
+
+5. **Export high-density PNG assets**
+
+   Export bitmap/icon layers from the exact bbox. Increasing `--scale-factor` improves file resolution while the CSS display size remains unchanged.
+
+   ```bash
+   scripts/extract_png_asset.py source.png assets/icons/icon-user.png \
+     --x 120 --y 980 --width 72 --height 72 \
+     --scale-factor 3 \
+     --remove-bg floodfill \
+     --manifest layers.manifest.json \
+     --id icon-user
+   ```
+
+6. **Build the 750px fixed canvas**
+
+   Implement the base canvas as `width: 750px`. Position key layers from the manifest. Responsive behavior should wrap and scale the whole canvas, not reflow individual children.
+
+7. **Audit exported PNGs**
+
+   Check alpha, transparent backgrounds, edge clipping, and manifest dimensions:
+
+   ```bash
+   scripts/audit_png_assets.py assets/icons assets/images \
+     --require-transparent-bg \
+     --manifest layers.manifest.json
+   ```
+
+8. **Compare the final render**
+
+   Compare the rendered screenshot with the 750px reference image:
+
+   ```bash
+   scripts/compare_images.py reference-750.png render-750.png --json
+   ```
+
+### Expected Deliverables
+
+A complete image-to-code run should usually include:
+
+- The generated frontend code
+- Independent transparent PNG assets
+- `layers.manifest.json`
+- bbox preview image
+- 750px baseline screenshot
+- at least one responsive mobile screenshot
+- a short restoration report covering assets, known limits, and QA results
+
+### Acceptance Criteria
+
+- The baseline canvas is exactly `750px` wide.
+- Canvas height follows the source aspect ratio.
+- Main layer coordinates, dimensions, stacking, and styles trace back to the manifest.
+- Text stays editable where practical.
+- Icons, avatars, illustrations, and complex decorations are sliced from the current source image.
+- PNG assets are transparent, high-density, unclipped, and free from white/gray rectangular backgrounds.
+- bbox previews align with the source image.
+- Final screenshot comparison shows no obvious shifts, missing assets, clipping, or substitute graphics.
+
+## Repository Structure
+
+```text
+image-to-code/
+├── SKILL.md
+├── README.md
+├── LICENSE
+├── requirements.txt
+├── agents/
+│   └── openai.yaml
+├── references/
+│   ├── figma-editable-export.md
+│   └── slicing.md
+└── scripts/
+    ├── audit_png_assets.py
+    ├── compare_images.py
+    ├── extract_png_asset.py
+    └── preview_bboxes.py
+```
+
+Key files:
+
+- `SKILL.md`: the instructions Codex loads when this skill is triggered.
+- `agents/openai.yaml`: UI metadata for the skill list.
+- `references/slicing.md`: detailed rules for bbox measurement, PNG export, and transparency.
+- `references/figma-editable-export.md`: guidance for turning the manifest/code/assets into editable Figma layer specs.
+- `scripts/preview_bboxes.py`: draws source bboxes for review.
+- `scripts/extract_png_asset.py`: exports exact-bbox PNG assets.
+- `scripts/audit_png_assets.py`: audits transparent PNG outputs.
+- `scripts/compare_images.py`: compares the final render against a reference.
+
+## License
+
+This project is released under the MIT License. See [LICENSE](LICENSE).
