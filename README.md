@@ -1,8 +1,12 @@
 # Image to Code
 
-`image-to-code` is a Codex skill for turning a selected UI image, screenshot, or exported design into code with pixel-level discipline. It normalizes the source to a fixed `750px` design canvas, exports independent high-density transparent PNG assets, and uses a manifest-driven workflow so every layer can be audited.
+`image-to-code` is a Codex skill for turning a selected UI image, screenshot, or Figma export into an adaptive code implementation, high-density transparent PNG assets, and optional editable Figma layer output.
 
-`image-to-code` 是一个用于 Codex 的图片转代码与高清切图 skill。它会把用户选中的 UI 图片、截图或设计导出稿按 `750px` 画板宽度进行像素级还原，导出独立高清透明 PNG 资源，并通过 manifest 驱动整个实现与验收流程。
+`750px` is the baseline coordinate system used for measurement and QA. It is not the only final display width. The final production output should include a responsive fit wrapper that scales the locked 750px artboard to mobile viewports or embedding containers without reflowing individual layers.
+
+`image-to-code` 是一个用于 Codex 的图片转代码 skill：它把选中的 UI 图片、截图或 Figma 导出稿还原为最终可自适应展示的代码，同时导出 2x/3x/4x 高清透明 PNG 切图资源，并可在后续拆分为可编辑 Figma 图层。
+
+`750px` 是测量、定位和复核用的基准坐标系，不是最终页面唯一显示宽度。最终生产代码必须在保持 750px 基准稿可精确复核的前提下，通过外层 fit wrapper 按手机视口或容器宽度整体等比缩放。
 
 ## Contents
 
@@ -13,22 +17,21 @@
 
 ## 中文说明
 
-### 项目定位
+### 核心定位
 
-这个项目不是普通的前端模板，也不是自动重新设计工具。它是一套 Codex skill 工作流，用来约束 AI agent 在执行“图片转代码”任务时严格尊重原图：
+这个项目不是普通前端模板，也不是“重新设计”工具。它是一套 Codex skill 工作流，用来约束图片转代码任务中的测量、切图、代码、响应式适配、QA 和 Figma 后续导入。
 
-- 原图是唯一视觉合同。
-- 基准画板宽度固定为 `750px`。
-- 所有坐标、尺寸、圆角、描边、阴影和字体都使用同一个缩放比例。
-- 文本尽量保持为可编辑文本。
-- 图标、头像、插画、复杂装饰和产品图从当前源图中切出独立 PNG。
-- 简单矩形、按钮、分割线、卡片背景等用代码或原生矢量实现。
-- 先做 manifest 和切图，再写页面代码。
-- 交付前必须做 bbox 预览、PNG 透明度审计和截图差异对比。
+核心产出包括：
+
+- 自适应前端代码：以 750px 锁定画板为基准，外层整体缩放适配 `320px-430px` 手机宽度、375px 演示宽度或指定容器宽度。
+- 独立高清 PNG 资源：图标、头像、插画、复杂装饰、产品图等从当前源图切出，默认 2x，必要时 3x 或 4x。
+- `layers.manifest.json`：记录每个图层的源图 bbox、750px 基准 bbox、z-index、资源路径、PNG 像素尺寸和 CSS 显示尺寸。
+- 透明背景与防裁切 QA：bbox 预览、PNG alpha 审计、棋盘格/黑底/白底检查、整页截图差异对比。
+- 可选 Figma 输出：代码与 QA 完成后，可按同一份 manifest/code/assets 拆成 Figma text node、shape、image fill 和本地 importer。
 
 ### 安装方式
 
-把整个目录放到 Codex 的 skills 目录中：
+把整个目录放到 Codex 的 skills 目录：
 
 ```text
 ~/.codex/skills/image-to-code
@@ -40,121 +43,156 @@
 python3 -m pip install -r requirements.txt
 ```
 
-当前脚本依赖：
-
-- Pillow
-- NumPy
+当前脚本依赖 Pillow 和 NumPy。
 
 ### 如何触发
 
-在 Codex 中可以直接点名 skill：
+在 Codex 中点名 skill：
 
 ```text
-使用 $image-to-code 将当前选中的 UI 图片转换为代码，并导出透明 PNG 切图资源。
+使用 $image-to-code 将当前选中的 UI 图片转换为自适应代码，并导出透明 PNG 切图资源。
 ```
 
-也可以用自然语言描述任务，例如：
+也可以自然描述：
 
 ```text
-把这张 750px 移动端设计图还原成 HTML/CSS，并把图标和插画单独切成透明 PNG。
+把这张移动端设计图还原成 HTML/CSS，最终页面要自适应手机宽度，图标和插画请按 2x/3x 单独切成透明 PNG，后面还要能导入 Figma。
 ```
+
+### 750px 基准与自适应最终产物
+
+`750px` 的作用是建立稳定的设计坐标系：
+
+```text
+scale = 750 / source_width
+baseline_width = 750
+baseline_height = round(source_height * scale)
+scaled_x = source_x * scale
+scaled_y = source_y * scale
+scaled_width = source_width_of_layer * scale
+scaled_height = source_height_of_layer * scale
+```
+
+同一个缩放比例应用到坐标、宽高、圆角、描边、阴影、字体和渐变位置。这个 750px 版本用于精确复核和截图对比。
+
+最终页面还必须提供自适应外层：
+
+- `.artboard` 或等效根画板保持 `width: 750px` 和归一化高度。
+- 所有子图层继续使用 manifest 中的 750px 基准坐标，不重新排版。
+- 外层 wrapper 根据容器或视口计算 `scale = min(1, availableWidth / 750)`。
+- wrapper 的实际占位宽高同步缩放，避免未缩放的 750px 内容撑开页面。
+- 375px 手机演示时，常见缩放比例约为 `0.5`；还需要检查至少一个其他手机宽度。
+
+推荐结构：
+
+```html
+<main class="fit-shell">
+  <div class="fit-box">
+    <section class="artboard">...</section>
+  </div>
+</main>
+```
+
+```css
+:root {
+  --board-w: 750;
+  --board-h: 1624;
+  --board-scale: min(1, calc(100vw / (var(--board-w) * 1px)));
+}
+
+.fit-shell {
+  width: 100%;
+  display: grid;
+  place-items: start center;
+  overflow-x: clip;
+}
+
+.fit-box {
+  width: calc(var(--board-w) * 1px * var(--board-scale));
+  height: calc(var(--board-h) * 1px * var(--board-scale));
+  overflow: hidden;
+}
+
+.artboard {
+  position: relative;
+  width: calc(var(--board-w) * 1px);
+  height: calc(var(--board-h) * 1px);
+  transform: scale(var(--board-scale));
+  transform-origin: top left;
+}
+```
+
+如果需要按父容器而不是视口适配，可以用 `ResizeObserver` 设置 `--board-scale`。无论哪种方式，750px QA 截图时都应能让缩放比例回到 `1`。
 
 ### 标准工作流程
 
-1. **检查输入图**
+1. **检查输入图和项目约束**
 
-   确认源图尺寸、宽高比、目标技术栈、是否需要切图、哪些文字要保留为可编辑文本，以及最终页面需要在哪些宽度下展示。
+   确认源图尺寸、目标技术栈、是否需要代码加切图、哪些文字要可编辑、哪些复杂图形要保留为 PNG、最终展示宽度和是否需要 Figma 输出。
 
-2. **归一化到 750px 画板**
+2. **归一化到 750px 基准画板**
 
-   以源图宽度为基准计算缩放比例：
-
-   ```text
-   scale = 750 / source_width
-   final_width = 750
-   final_height = round(source_height * scale)
-   ```
-
-   所有图层都必须使用同一个 `scale`，不能为了布局更顺眼单独调整元素。
+   计算统一缩放比例，建立 `750px x baseline_height` 的 QA 坐标系。
 
 3. **建立 `layers.manifest.json`**
 
-   manifest 是布局和切图的唯一数据源。每个图层至少记录：
-
-   - `id`
-   - `type`
-   - `source_bbox`
-   - `scaled_bbox`
-   - `z_index`
-   - `asset`
-   - `asset_scale_factor`
-   - `css_display_width`
-   - `css_display_height`
-   - `transparent_required`
+   manifest 是布局、切图、代码和 Figma 导出的共同数据源。不要先写近似页面再补图。
 
 4. **预览 bbox**
 
-   在源图上画出 manifest 中的 bbox，确认切图框没有裁掉主体，也没有误带相邻元素。
+   切图前先在源图上画出每个资源 bbox：
 
    ```bash
    scripts/preview_bboxes.py source.png layers.manifest.json qa/bbox-preview.png --only-type bitmap
    ```
 
-5. **导出高清 PNG 资源**
+5. **按 2x/3x/4x 导出高清 PNG**
 
-   使用精确 bbox 从源图导出 PNG。高清导出只提高 PNG 文件真实像素，不改变它在页面中的 CSS 显示尺寸。
+   使用 `asset_scale_factor` 放大文件真实像素，同时保持页面 CSS 显示尺寸等于原元素外框。
 
-   ```bash
-   scripts/extract_png_asset.py source.png assets/icons/icon-user.png \
-     --x 120 --y 980 --width 72 --height 72 \
-     --scale-factor 3 \
-     --remove-bg floodfill \
-     --manifest layers.manifest.json \
-     --id icon-user
-   ```
+6. **实现 750px 锁定画板**
 
-6. **实现 750px 固定画板**
+   文本和简单图形尽量代码化，复杂图标/插画/头像/产品图使用独立 PNG 图层。每个关键图层都应能追溯到 manifest。
 
-   页面根画板固定为 `width: 750px`。关键元素用 manifest 坐标定位。响应式只允许在外层整体缩放画板，不应该对子元素重新排版。
+7. **增加自适应 fit wrapper**
 
-7. **审计 PNG 资源**
+   在完成 750px 基准稿后单独做手机端适配。适配只发生在外层整体缩放，不改变子元素坐标、字号、间距或尺寸。
 
-   检查 PNG 是否带 alpha 通道、背景是否透明、是否贴边，以及尺寸是否和 manifest 匹配。
+8. **分模块 QA**
 
-   ```bash
-   scripts/audit_png_assets.py assets/icons assets/images \
-     --require-transparent-bg \
-     --manifest layers.manifest.json
-   ```
+   分别检查文本层、矢量/规则图形、PNG 位图/图标资源。
 
-8. **截图对比验收**
+9. **截图复核**
 
-   将最终渲染截图与 750px 参考图做差异对比。
+   截 750px 基准图，与归一化原图对比；再截 375px 和至少一个其他手机宽度，检查无横向滚动、无溢出、无未缩放 750px 内容撑开页面。
 
-   ```bash
-   scripts/compare_images.py reference-750.png render-750.png --json
-   ```
+10. **可选导出 Figma**
+
+   代码和 QA 完成后，如果用户要求 Figma，基于 manifest/code/assets 生成可编辑 Figma 图层规格或本地 importer。
 
 ### Manifest 示例
+
+`asset_pixel_width/height` 是 PNG 文件真实像素尺寸；`css_display_width/height` 是页面和 Figma 中显示的尺寸。2x/3x/4x 不会改变布局占位。
 
 ```json
 [
   {
-    "id": "avatar",
+    "id": "icon-home-01",
     "type": "bitmap",
-    "source_bbox": { "x": 86, "y": 112, "width": 120, "height": 120 },
-    "scaled_bbox": { "x": 86, "y": 112, "width": 120, "height": 120 },
-    "z_index": 10,
-    "asset": "assets/images/avatar.png",
-    "asset_pixel_width": 360,
-    "asset_pixel_height": 360,
+    "source_bbox": { "x": 120, "y": 88, "width": 32, "height": 32 },
+    "scaled_bbox": { "x": 120, "y": 88, "width": 32, "height": 32 },
+    "z_index": 12,
+    "asset": "assets/icons/icon-home-01.png",
+    "asset_pixel_width": 96,
+    "asset_pixel_height": 96,
     "asset_scale_factor": 3,
-    "css_display_width": 120,
-    "css_display_height": 120,
-    "transparent_required": true
+    "css_display_width": 32,
+    "css_display_height": 32,
+    "transparent_required": true,
+    "notes": "3x 高清导出，页面仍按 32x32 显示"
   },
   {
-    "id": "username",
+    "id": "title-name",
     "type": "text",
     "text": "橘子果酱",
     "source_bbox": { "x": 252, "y": 134, "width": 140, "height": 40 },
@@ -167,44 +205,95 @@ python3 -m pip install -r requirements.txt
 ]
 ```
 
-### 交付物
+### 高清切图与透明 PNG
 
-一次完整的图片转代码任务通常应该交付：
+切图的原则是“高清文件、固定显示、透明背景、不裁边”：
 
-- 还原后的前端代码
-- 独立透明 PNG 切图资源
-- `layers.manifest.json`
-- bbox 预览图
-- 750px 基准截图
-- 至少一个移动端自适应截图
-- 简短还原报告，说明资源、误差、限制和验收结果
+- `asset_scale_factor` 默认至少 `2`。
+- 小于 `64px` 的图标、源图压缩明显、边缘脏、抠底困难或页面里发糊时用 `3` 或 `4`。
+- `asset_pixel_width = css_display_width * asset_scale_factor`。
+- `asset_pixel_height = css_display_height * asset_scale_factor`。
+- 代码里的 `<img>` 或背景图必须按 `css_display_width/css_display_height` 显示，不能因为 PNG 是 3x 就撑大布局。
+- 背景抠除应在高清画布里完成，不能先低清抠图失败后直接放大。
+- PNG 不能自动 trim，不能按可见主体缩边，必须保留透明留白和半透明边缘。
+- `assets/icons/` 和 `assets/illustrations/` 默认都要求透明背景，除非 manifest 明确说明它是照片、截图或完整矩形背景素材。
+
+推荐命令：
+
+```bash
+scripts/extract_png_asset.py source.png assets/icons/icon-home-01.png \
+  --x 120 --y 88 --width 32 --height 32 \
+  --scale-factor 3 \
+  --css-width 32 --css-height 32 \
+  --remove-bg floodfill \
+  --manifest layers.manifest.json \
+  --id icon-home-01
+```
+
+审计 PNG：
+
+```bash
+scripts/audit_png_assets.py assets/icons assets/illustrations assets/images \
+  --require-transparent-bg \
+  --manifest layers.manifest.json
+```
+
+如果审计发现 `has_alpha_channel=false`、`transparent_bg_ok=false`、四角 alpha 不透明、或非透明像素贴边，应扩大 bbox、重新抠图或提升 `asset_scale_factor` 后重出资源。
+
+### Figma 可编辑图层导入
+
+Figma 输出不是把整页截图导入成一张图。正确做法是在代码和 QA 完成后，基于同一份 `layers.manifest.json`、完成代码的 computed styles、CSS tokens 和 PNG assets 生成可编辑图层规格。
+
+推荐输出：
+
+```text
+figma-code-import/
+├── manifest.json
+├── code.js
+├── FIGMA_IMPORT_REPORT.json
+└── README.md
+```
+
+图层映射规则：
+
+- Frame：创建 `750 x baseline_height` frame，并保持背景、裁切和层级。
+- Text：创建 Figma text node，保留真实文字、字体、字号、行高、字间距、颜色、透明度和位置。
+- Simple vector：矩形、圆、线、按钮、卡片、标签、分割线等创建 Figma 原生 shape。
+- Bitmap：图标、头像、插画、复杂图表和产品图创建独立 image fill，显示尺寸等于 manifest 的 `css_display_width/height`。
+- Reference：可以加入隐藏且锁定的 750px QA render 作为参考层，但它不能替代生产图层。
+
+导入方式优先级：
+
+1. 如果当前环境有 Figma MCP/API/浏览器写入权限，并且用户提供目标 Figma 文件链接，可以直接写入目标文件。
+2. 没有直接写入权限时，生成本地 Figma development plugin importer 或 `figma_layer_spec.json`。
+3. 不因为缺少 Figma token 或远端权限就放弃；至少交付本地 importer 或 layer spec。
+
+Figma 报告应包含 frame 名称、文本/矢量/PNG 图层数量、替代字体、不可编辑限制、hidden reference layer 状态，以及本地 importer 路径或 Figma 文件链接。
 
 ### 验收标准
 
-- 750px 基准画板宽度精确为 `750px`。
-- 画板高度按源图比例计算，不人为优化。
-- 所有主要图层位置、大小、层级和样式可追溯到 manifest。
-- 文本为可编辑文本，除非它属于复杂位图的一部分。
-- 图标、头像、插画和复杂装饰来自当前源图切图。
-- PNG 资源透明、高清、不贴边、不带白底或灰底。
-- bbox 预览与源图元素边界一致。
-- 最终截图和参考图无明显错位、缺图、裁切或替代素材。
+- 最终生产页面有自适应外层，不能只交付固定 750px 页面。
+- 750px 基准画板可用作精确 QA，宽度为 `750px`，高度按源图比例计算。
+- 375px 及至少一个其他手机宽度下没有横向滚动，`scrollWidth` 不应明显超过视口宽度。
+- 所有关键元素位置、大小、层级和样式可追溯到 manifest。
+- PNG 文件真实像素尺寸符合 `asset_scale_factor`，页面显示尺寸符合 `css_display_width/height`。
+- 透明 PNG 有 alpha 通道，无白底、灰底、页面底色矩形和明显脏边。
+- 文本保持可编辑；简单图形使用代码或 Figma 原生 shape；复杂图形使用独立 PNG。
+- 如果导出 Figma，文本节点、shape、image fill 和 z-index 顺序都应与 manifest 一致。
 
 ## English Guide
 
-### What This Project Is
+### Project Purpose
 
-This repository packages a Codex skill for strict image-to-code reconstruction. It is designed for UI screenshots, mobile app screens, Figma exports, web mockups, posters, and similar design images where the source image is the visual contract.
+This repository packages a Codex skill for strict image-to-code reconstruction. The final deliverable is not merely a fixed 750px page. The expected production output is an adaptive implementation backed by a locked 750px QA baseline, high-density sliced assets, and optional editable Figma layer export.
 
-The skill pushes Codex to follow a measured process instead of improvising a new layout:
+Primary outputs:
 
-- Normalize the source image to a `750px`-wide design canvas.
-- Keep one global scale for every coordinate and visual property.
-- Build a `layers.manifest.json` before coding.
-- Export bitmap/icon layers from the current source image.
-- Keep text editable whenever possible.
-- Recreate simple shapes with code.
-- Audit exported assets and compare the final render against the reference.
+- Adaptive frontend code with a 750px locked artboard scaled by an outer fit wrapper.
+- Independent transparent PNG assets exported at 2x, 3x, or 4x density while keeping CSS display sizes fixed.
+- `layers.manifest.json` as the source of truth for layout, slicing, QA, and Figma export.
+- bbox previews, PNG transparency audits, mobile screenshots, and image comparison QA.
+- Optional Figma layer spec or local importer that creates editable text, shapes, and image fills.
 
 ### Installation
 
@@ -214,118 +303,124 @@ Place the repository directory in your Codex skills folder:
 ~/.codex/skills/image-to-code
 ```
 
-Install script dependencies:
+Install dependencies:
 
 ```bash
 python3 -m pip install -r requirements.txt
 ```
 
-Dependencies:
-
-- Pillow
-- NumPy
+The helper scripts use Pillow and NumPy.
 
 ### How to Use It
 
-Trigger the skill explicitly in Codex:
+Trigger the skill explicitly:
 
 ```text
-Use $image-to-code to convert the selected UI image into code and export transparent PNG assets.
+Use $image-to-code to convert the selected UI image into adaptive code and transparent PNG assets.
 ```
 
-You can also describe the task naturally:
+Natural-language example:
 
 ```text
-Convert this mobile UI screenshot into HTML/CSS at a 750px design width, and export the icons and illustrations as separate transparent PNG files.
+Convert this mobile UI screenshot into responsive HTML/CSS, export the icons and illustrations as 2x/3x transparent PNGs, and keep the output ready for a later Figma import.
 ```
 
-### Step-by-Step Workflow
+### 750px Baseline vs Adaptive Output
 
-1. **Inspect the source**
+The `750px` canvas is the measurement and QA coordinate system:
 
-   Record the original image dimensions, target output type, required editable text, bitmap layers, responsive constraints, and project framework.
+```text
+scale = 750 / source_width
+baseline_width = 750
+baseline_height = round(source_height * scale)
+```
 
-2. **Normalize to a 750px canvas**
+All layer coordinates, sizes, radii, strokes, shadows, gradients, and typography measurements use the same scale. The production page then wraps this locked artboard in a fit layer:
 
-   Calculate the global scale:
+- The `.artboard` stays `width: 750px`.
+- Children keep manifest coordinates and do not reflow.
+- The outer wrapper computes `scale = min(1, availableWidth / 750)`.
+- The wrapper's occupied width and height scale with the visual output.
+- Mobile QA should include 375px and at least one other common width.
 
-   ```text
-   scale = 750 / source_width
-   final_width = 750
-   final_height = round(source_height * scale)
-   ```
+### Workflow
 
-   Apply this scale to every coordinate, size, border radius, stroke, shadow, gradient position, and text measurement.
+1. Inspect the source image, framework, output needs, editable text, bitmap layers, responsive constraints, and Figma requirements.
+2. Normalize the source to a 750px baseline canvas.
+3. Create `layers.manifest.json` before coding.
+4. Preview bbox overlays on the source image.
+5. Export high-density transparent PNG assets at 2x/3x/4x.
+6. Build the locked 750px artboard using manifest coordinates.
+7. Add the adaptive fit wrapper.
+8. QA text, vector/shape, and bitmap/icon layers separately.
+9. Capture and compare the 750px render, then verify 375px and another mobile width.
+10. If requested, generate an editable Figma layer spec or local importer from the same manifest/code/assets.
 
-3. **Create `layers.manifest.json`**
+### High-Density PNG Slicing
 
-   The manifest is the source of truth for layout and slicing. Each layer should record its source bbox, scaled bbox, type, z-index, asset path, and transparency requirements.
+The PNG file resolution can be higher than the on-page display size:
 
-4. **Preview bounding boxes**
+- Use `asset_scale_factor: 2` by default.
+- Use `3` or `4` for small icons, compressed sources, blurry results, or difficult background removal.
+- `asset_pixel_width = css_display_width * asset_scale_factor`.
+- `asset_pixel_height = css_display_height * asset_scale_factor`.
+- CSS display dimensions remain equal to the manifest layer bbox.
+- Do not trim the PNG after background removal.
+- Keep transparent padding, antialiasing, shadows, and semi-transparent edges.
 
-   Draw bbox overlays on the original source image before exporting assets:
+Example:
 
-   ```bash
-   scripts/preview_bboxes.py source.png layers.manifest.json qa/bbox-preview.png --only-type bitmap
-   ```
+```bash
+scripts/extract_png_asset.py source.png assets/icons/icon-home-01.png \
+  --x 120 --y 88 --width 32 --height 32 \
+  --scale-factor 3 \
+  --css-width 32 --css-height 32 \
+  --remove-bg floodfill \
+  --manifest layers.manifest.json \
+  --id icon-home-01
+```
 
-5. **Export high-density PNG assets**
+Audit assets:
 
-   Export bitmap/icon layers from the exact bbox. Increasing `--scale-factor` improves file resolution while the CSS display size remains unchanged.
+```bash
+scripts/audit_png_assets.py assets/icons assets/illustrations assets/images \
+  --require-transparent-bg \
+  --manifest layers.manifest.json
+```
 
-   ```bash
-   scripts/extract_png_asset.py source.png assets/icons/icon-user.png \
-     --x 120 --y 980 --width 72 --height 72 \
-     --scale-factor 3 \
-     --remove-bg floodfill \
-     --manifest layers.manifest.json \
-     --id icon-user
-   ```
+### Figma Editable Export
 
-6. **Build the 750px fixed canvas**
+Figma output should be created from `layers.manifest.json`, computed styles, CSS tokens, and PNG assets. Do not import the final page as a single screenshot.
 
-   Implement the base canvas as `width: 750px`. Position key layers from the manifest. Responsive behavior should wrap and scale the whole canvas, not reflow individual children.
+Recommended local output:
 
-7. **Audit exported PNGs**
+```text
+figma-code-import/
+├── manifest.json
+├── code.js
+├── FIGMA_IMPORT_REPORT.json
+└── README.md
+```
 
-   Check alpha, transparent backgrounds, edge clipping, and manifest dimensions:
+Layer mapping:
 
-   ```bash
-   scripts/audit_png_assets.py assets/icons assets/images \
-     --require-transparent-bg \
-     --manifest layers.manifest.json
-   ```
+- Frame: `750 x baseline_height`.
+- Text: editable Figma text nodes.
+- Simple vectors: native Figma rectangles, ellipses, lines, buttons, dividers, and cards.
+- Bitmaps: independent image fills displayed at `css_display_width/height`.
+- Reference: optional hidden locked 750px render for QA only.
 
-8. **Compare the final render**
-
-   Compare the rendered screenshot with the 750px reference image:
-
-   ```bash
-   scripts/compare_images.py reference-750.png render-750.png --json
-   ```
-
-### Expected Deliverables
-
-A complete image-to-code run should usually include:
-
-- The generated frontend code
-- Independent transparent PNG assets
-- `layers.manifest.json`
-- bbox preview image
-- 750px baseline screenshot
-- at least one responsive mobile screenshot
-- a short restoration report covering assets, known limits, and QA results
+If Figma API/MCP/browser write access is available and the user provides a target file, the same layer spec can be written directly. Otherwise, the skill should still deliver a local Figma importer or `figma_layer_spec.json`.
 
 ### Acceptance Criteria
 
-- The baseline canvas is exactly `750px` wide.
-- Canvas height follows the source aspect ratio.
-- Main layer coordinates, dimensions, stacking, and styles trace back to the manifest.
-- Text stays editable where practical.
-- Icons, avatars, illustrations, and complex decorations are sliced from the current source image.
-- PNG assets are transparent, high-density, unclipped, and free from white/gray rectangular backgrounds.
-- bbox previews align with the source image.
-- Final screenshot comparison shows no obvious shifts, missing assets, clipping, or substitute graphics.
+- The production output includes responsive scaling, not only a fixed 750px page.
+- The 750px baseline remains available for exact QA.
+- 375px and at least one other mobile width render without horizontal overflow.
+- Layer coordinates, dimensions, stacking, and styles trace back to the manifest.
+- PNG real pixel sizes match `asset_scale_factor`; CSS display sizes match the layer bbox.
+- Transparent PNGs have alpha, clean edges, no white/gray/page-background rectangle, and no clipping.
+- Figma exports use editable text nodes, native shapes where possible, independent image fills, and correct z-index order.
 
 ## Repository Structure
 
@@ -349,14 +444,13 @@ image-to-code/
 
 Key files:
 
-- `SKILL.md`: the instructions Codex loads when this skill is triggered.
-- `agents/openai.yaml`: UI metadata for the skill list.
-- `references/slicing.md`: detailed rules for bbox measurement, PNG export, and transparency.
-- `references/figma-editable-export.md`: guidance for turning the manifest/code/assets into editable Figma layer specs.
-- `scripts/preview_bboxes.py`: draws source bboxes for review.
-- `scripts/extract_png_asset.py`: exports exact-bbox PNG assets.
-- `scripts/audit_png_assets.py`: audits transparent PNG outputs.
-- `scripts/compare_images.py`: compares the final render against a reference.
+- `SKILL.md`: the full workflow Codex loads when this skill is triggered.
+- `references/slicing.md`: detailed bbox, high-density PNG, transparency, and anti-clipping rules.
+- `references/figma-editable-export.md`: Figma layer spec and importer guidance.
+- `scripts/preview_bboxes.py`: draws bbox overlays on the source image.
+- `scripts/extract_png_asset.py`: exports exact-bbox PNG assets at 2x/3x/4x density.
+- `scripts/audit_png_assets.py`: audits PNG alpha, transparent backgrounds, edge clipping, and manifest dimensions.
+- `scripts/compare_images.py`: compares a rendered screenshot with the reference.
 
 ## License
 
