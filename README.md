@@ -452,6 +452,10 @@ Key files:
 - `scripts/audit_png_assets.py`: audits PNG alpha, transparent backgrounds, edge clipping, and manifest dimensions.
 - `scripts/compare_images.py`: compares a rendered screenshot with the reference.
 
+## 鸣谢
+
+学AI, 上L站！[LINUX DO](https://linux.do/)
+
 ## License
 
 This project is released under the MIT License. See [LICENSE](LICENSE).
