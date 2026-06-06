@@ -60,8 +60,10 @@ chart-dashboard-sales-01.png
 - 禁止把图标或位图转换为矢量路径。
 - 需要透明背景的 PNG 必须保留 alpha 通道，背景 alpha 必须为 0。
 - 白底、灰底、页面底色、卡片底色被带进 PNG 时，判定切图失败，除非该底色是元素视觉本身。
+- `assets/icons/` 和 `assets/illustrations/` 下的资源默认必须是透明背景。只有照片、截图、完整矩形产品图、背景纹理或用户明确要求保留的矩形素材可以不透明，并必须在 manifest 的 `notes` 中说明。
+- 不得为了让审计通过而把插画、图标、卡片装饰图的 `transparent_required` 改成 `false`。如果背景抠除失败，正确动作是扩大 bbox、重抠、用 image2/imagegen 兜底，或明确报告失败态。
 - 推荐使用 `scripts/extract_png_asset.py` 或等效流程按 bbox 从源图导出；该流程必须保证不 trim、不改变页面显示外框和主体构图，PNG 文件像素尺寸按 `asset_scale_factor` 高清放大。
-- 对需要透明背景的切图，必须运行 `scripts/audit_png_assets.py --require-transparent-bg` 或等效检查；白色/灰色矩形底、无 alpha 通道、角落不透明都判定失败。
+- 对需要透明背景的切图，必须运行 `scripts/audit_png_assets.py --require-transparent-bg` 或等效检查；白色/灰色矩形底、无 alpha 通道、角落不透明都判定失败。若审计依赖缺失，必须换用可用 Python、安装依赖或写等效审计，不能跳过。
 
 ## 高清导出规则
 

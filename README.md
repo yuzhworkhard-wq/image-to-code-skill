@@ -96,6 +96,17 @@ image-to-code/
 
 ## 脚本说明
 
+脚本依赖：
+
+- Pillow，许可证为 HPND License
+- NumPy，许可证为 BSD-3-Clause License
+
+安装依赖：
+
+```bash
+python3 -m pip install -r requirements.txt
+```
+
 ### 1. 预览 bbox
 
 在源图上画出 manifest 中记录的 bbox，用于检查切图区域是否准确。
@@ -159,3 +170,7 @@ scripts/compare_images.py reference-750.png render-750.png --json
 ```text
 使用 $image-to-code 将当前选中的 UI 图片转换为代码，并导出透明 PNG 切图资源。
 ```
+
+## 许可证
+
+本项目使用 MIT License 开源。详见 `LICENSE`。
